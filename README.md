@@ -103,7 +103,7 @@ fraudguard/
 
 ```bash
 # 1. Clone
-git clone https://github.com/YOUR_USERNAME/fraudguard.git
+git clone https://github.com/NikunjSharma-dev/FraudGuard.git
 cd fraudguard
 
 # 2. Configure
