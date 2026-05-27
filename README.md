@@ -1,297 +1,329 @@
-# 🛡️ Intelligent Financial Fraud Detection System
+# FraudGuard
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
+A real-time fraud detection system built on FastAPI, PostgreSQL, Redis, and a dual-layer ML pipeline. Transactions are scored the moment they're submitted — hard business rules fire inside the database itself, then an async ML engine runs Isolation Forest + XGBoost against behavioral features cached in Redis.
+
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green.svg)](https://fastapi.tiangolo.com)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.35-red.svg)](https://streamlit.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://postgresql.org)
-[![Redis](https://img.shields.io/badge/Redis-7.2-red.svg)](https://redis.io)
-[![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://docs.docker.com/compose/)
+[![Redis](https://img.shields.io/badge/Redis-7-red.svg)](https://redis.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An **enterprise-grade, real-time fraud detection platform** combining asynchronous ML inference, a PostgreSQL transactional ledger, Redis feature caching, and a live Streamlit dashboard — all orchestrated via Docker Compose.
+---
+
+## How it works
+
+When a transaction comes in, two independent checks run:
+
+1. **PostgreSQL trigger** — fires on every insert, enforcing hard rules: suspended accounts, daily spend limits, blocked regions. No application code can bypass this layer.
+
+2. **ML engine** (async, non-blocking) — reads behavioral context from Redis (transaction velocity, geographic distance from last known location, amount z-score vs. account history), runs it through a StandardScaler → Isolation Forest → XGBoost pipeline, and updates the transaction's status + risk score.
+
+If the ML engine flags a transaction, the API generates a one-time OTP (stored in Redis with a 5-minute TTL), surface it in the backend terminal for demo purposes, and puts the transaction into `Awaiting Verification`. The user has to complete the MFA challenge before the transaction resolves.
+
+A Streamlit dashboard polls `/admin/ledger-summary` for live metrics, charts, and the full transaction table.
 
 ---
 
-## 📸 Screenshots
-
-| Customer Terminal | Admin Live Monitor |
-|---|---|
-| ![Terminal](docs/screenshots/terminal.png) | ![Dashboard](docs/screenshots/dashboard.png) |
-
----
-
-## 🏗️ Architecture
+## Architecture
 
 ```
-[ Streamlit UI ] ──(HTTP)──> [ FastAPI Backend ]
-                                   │          │
-               ┌───────────────────┘          └──────────────────────┐
-      (Instant Write)                                    (Async Risk Eval)
-               ▼                                                      ▼
-  ┌─────────────────────┐                           ┌──────────────────────────┐
-  │    PostgreSQL        │                           │     ML Engine            │
-  │  (Core Ledger DB)   │                           │  Isolation Forest + XGB  │
-  │                     │                           │                          │
-  │  • SQL Triggers     │                           │  • Reads Redis context   │
-  │  • Audit Logs       │                           │  • Computes risk score   │
-  │  • Partitioning     │                           └──────────┬───────────────┘
-  └─────────────────────┘                                      │
-                                          (If Fraud → Update DB + Alert UI)
-                                          (Status → 'Awaiting Verification')
+[ Streamlit Dashboard ] ──(HTTP)──▶ [ FastAPI Backend :8000 ]
+                                            │            │
+                               ┌────────────┘            └──────────────────┐
+                          (write)                                    (async eval)
+                               ▼                                            ▼
+                    ┌─────────────────────┐                  ┌─────────────────────────┐
+                    │     PostgreSQL       │                  │       ML Engine         │
+                    │  (transactional     │                  │  IsolationForest + XGB  │
+                    │   ledger)           │                  │                         │
+                    │                     │                  │  reads Redis context    │
+                    │  · SQL triggers     │                  │  computes risk score    │
+                    │  · audit log        │◀─────────────────│  writes result back     │
+                    │  · monthly          │   (status +      └─────────────────────────┘
+                    │    partitioning     │    risk_score)              │
+                    └─────────────────────┘                            │
+                                                               ┌───────▼────────┐
+                                                               │     Redis       │
+                                                               │  feature store  │
+                                                               │  OTP cache      │
+                                                               └─────────────────┘
 ```
 
 ---
 
-## ✨ Key Features
-
-- **Real-Time Transaction Processing** — FastAPI async backend handles concurrent submissions without blocking
-- **Dual-Layer Fraud Detection:**
-  - 🔴 **Database Triggers** — Hard business rules (suspended accounts, daily limits) via PostgreSQL
-  - 🟠 **ML Inference** — Isolation Forest anomaly detection + XGBoost classifier running asynchronously
-- **Redis Feature Store** — Sub-millisecond lookups for behavioral features (velocity, geo-distance, transaction frequency)
-- **Step-Up MFA Simulation** — OTP verification flow triggered automatically on fraud flags
-- **Live Admin Dashboard** — Streamlit dashboard with real-time metrics, charts, and ledger table
-- **Full Audit Trail** — Every state change logged with timestamps in PostgreSQL
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| **Frontend / Dashboard** | Streamlit | Interactive UI, real-time polling, charting |
-| **Backend API** | FastAPI (async) | REST endpoints, background task queue |
-| **Core Database** | PostgreSQL 16 | ACID ledger, triggers, partitioning |
-| **Cache / Feature Store** | Redis 7 | Behavioral context, velocity checks |
-| **ML Engine** | Scikit-learn, XGBoost | Isolation Forest + supervised classifier |
-| **Containerization** | Docker Compose | One-command deployment of all services |
-| **Model Interpretability** | SHAP | Feature attribution and explanation |
-
----
-
-## 📁 Project Structure
+## Project structure
 
 ```
-fraud-detection-system/
-│
-├── backend/                        # FastAPI application
+fraudguard/
+├── backend/
 │   ├── app/
-│   │   ├── api/                    # Route handlers
-│   │   │   ├── transactions.py     # Transaction endpoints
-│   │   │   └── admin.py            # Admin/monitoring endpoints
-│   │   ├── models/                 # Pydantic schemas + DB models
-│   │   │   ├── schemas.py
-│   │   │   └── database.py
-│   │   ├── services/               # Business logic
-│   │   │   ├── fraud_service.py    # ML inference + Redis
-│   │   │   └── ledger_service.py   # DB operations
-│   │   ├── ml/                     # ML model training & artifacts
-│   │   │   ├── train.py
-│   │   │   ├── predict.py
-│   │   │   └── models/             # Saved .pkl model files
-│   │   └── main.py                 # FastAPI app entry point
-│   ├── tests/
-│   │   ├── test_transactions.py
-│   │   └── test_ml.py
-│   └── requirements.txt
+│   │   ├── api/
+│   │   │   ├── transactions.py     # submit, verify OTP, resend OTP, explain
+│   │   │   ├── admin.py            # ledger summary, volume trends, account mgmt
+│   │   │   └── accounts.py         # customer signup / onboarding
+│   │   ├── models/
+│   │   │   ├── schemas.py          # Pydantic request/response models
+│   │   │   └── database.py         # SQLAlchemy ORM + async session factory
+│   │   ├── services/
+│   │   │   ├── fraud_service.py    # async orchestrator: Redis, OTP, ML dispatch
+│   │   │   └── ledger_service.py   # all database operations
+│   │   ├── ml/
+│   │   │   ├── predict.py          # FraudPredictor: scaler → IF → XGB → SHAP
+│   │   │   ├── train.py            # training script (run offline)
+│   │   │   └── models/             # .pkl artifacts loaded at startup
+│   │   └── main.py                 # FastAPI app, lifespan, CORS, rate limiting
+│   └── tests/
+│       ├── test_api.py
+│       └── test_ml.py
 │
-├── streamlit_app/                  # Streamlit dashboard
-│   ├── app.py                      # Main Streamlit app
-│   └── requirements.txt
+├── streamlit_app/
+│   └── app.py                      # live dashboard, polling /admin endpoints
 │
-├── ml_pipeline/                    # Standalone ML training pipeline
+├── ml_pipeline/
 │   ├── notebooks/
-│   │   ├── 01_EDA.ipynb            # Exploratory Data Analysis
+│   │   ├── 01_EDA.ipynb
 │   │   ├── 02_Feature_Engineering.ipynb
 │   │   └── 03_Model_Training.ipynb
-│   └── data/                       # Place your dataset here
-│       └── .gitkeep
+│   └── data/                       # drop your dataset here
 │
 ├── docker/
-│   ├── init.sql                    # PostgreSQL schema + triggers
+│   ├── init.sql                    # schema, triggers, partitions, views
 │   └── redis.conf
 │
-├── docs/
-│   ├── API.md                      # API reference
-│   └── screenshots/
-│
-├── .github/
-│   └── workflows/
-│       └── ci.yml                  # GitHub Actions CI pipeline
-│
+├── .github/workflows/ci.yml
 ├── docker-compose.yml
-├── .env.example
-├── .gitignore
-└── README.md
+└── .env.example
 ```
 
 ---
 
-## 🚀 Quick Start
+## Quickstart
 
-### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Docker Compose)
-- Git
+**Requirements:** Docker Desktop (includes Compose), Git.
 
-### 1. Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/fraud-detection-system.git
-cd fraud-detection-system
-```
+# 1. Clone
+git clone https://github.com/YOUR_USERNAME/fraudguard.git
+cd fraudguard
 
-### 2. Configure environment
-```bash
+# 2. Configure
 cp .env.example .env
-# Edit .env if needed (defaults work out of the box)
-```
+# Defaults work out of the box. Change SECRET_KEY before any real deployment.
 
-### 3. Launch all services
-```bash
+# 3. Start everything
 docker-compose up --build
 ```
 
-This starts:
-| Service | URL |
-|---|---|
-| Streamlit Dashboard | http://localhost:8501 |
-| FastAPI Backend | http://localhost:8000 |
-| FastAPI Docs (Swagger) | http://localhost:8000/docs |
-| PostgreSQL | localhost:5432 |
-| Redis | localhost:6379 |
+Services after startup:
 
-### 4. (Optional) Train the ML model locally
-```bash
-cd backend
-pip install -r requirements.txt
-python app/ml/train.py
-```
+| Service             | Address                       |
+|---------------------|-------------------------------|
+| Streamlit dashboard | http://localhost:8501         |
+| FastAPI backend     | http://localhost:8000         |
+| Swagger docs        | http://localhost:8000/docs    |
+| PostgreSQL          | localhost:5432                |
+| Redis               | localhost:6379                |
 
 ---
 
-## 🔌 API Reference
+## API
 
-### Submit a Transaction
+### Create an account
+
+```http
+POST /account/signup
+Content-Type: application/json
+
+{
+  "full_name": "Jane Doe",
+  "email": "jane@example.com",
+  "phone": "+91-9876543210",
+  "kyc_document": "PAN-ABCDE1234F"
+}
+```
+
+Response includes a generated `account_id` (e.g. `ACC47291`).
+
+---
+
+### Submit a transaction
+
 ```http
 POST /transaction/submit
 Content-Type: application/json
 
 {
-  "account_id": "ACC10294",
+  "account_id": "ACC47291",
   "amount": 5000.00,
   "lat": 19.0760,
   "lon": 72.8777
 }
 ```
 
-**Response:**
 ```json
 {
-  "transaction_id": "txn_8f3a...",
+  "transaction_id": "3f8a1b2c-...",
   "status": "Awaiting Verification",
   "risk_score": 0.87,
-  "message": "Suspicious activity flagged by ML engine"
+  "message": "[DEMO] Your OTP: 481920"
 }
 ```
 
-### Verify OTP (Step-Up MFA)
+Possible statuses: `Approved`, `Declined`, `Awaiting Verification`.
+
+---
+
+### Verify OTP
+
 ```http
 PATCH /transaction/{transaction_id}/verify
 Content-Type: application/json
 
-{ "otp": "123456" }
+{ "otp": "481920" }
 ```
 
-### Admin — Get Ledger Summary
+A valid OTP resolves the transaction to `Verified`. An invalid or expired one moves it to `Declined`. OTPs expire after 5 minutes.
+
+---
+
+### Resend OTP
+
+```http
+POST /transaction/{transaction_id}/resend-otp
+```
+
+Generates a new OTP and resets the Redis TTL. The old OTP is immediately invalidated.
+
+---
+
+### Ledger summary (admin)
+
 ```http
 GET /admin/ledger-summary
 ```
 
-Full API docs available at `/docs` (Swagger UI) when running.
+Returns aggregate stats (total volume, fraud count, throughput, status breakdown) plus a recent transaction list. This is what the Streamlit dashboard polls.
 
 ---
 
-## 🧠 ML Models
+### Health check
 
-### 1. Isolation Forest (Unsupervised)
-- Detects anomalies without labeled data
-- Trained on: `amount`, `geo_velocity`, `tx_count_10m`, `hour_of_day`, `weekend_flag`
-- Threshold tuned for top 1% anomaly flagging
+```http
+GET /health
+```
 
-### 2. XGBoost Classifier (Supervised)
-- Trained on labeled fraud data (Kaggle Credit Card Dataset)
-- SMOTE applied to handle class imbalance (~0.17% fraud rate)
-- SHAP used for feature attribution and model explainability
-
-### Feature Engineering
-| Feature | Description |
-|---|---|
-| `geo_velocity` | Distance (km) between current & last transaction location |
-| `time_since_last_tx` | Seconds elapsed since last transaction |
-| `tx_count_10m` | Transactions in the last 10 minutes (from Redis) |
-| `amount_z_score` | Z-score of amount vs. account history |
-| `hour_of_day` | Hour of transaction (0–23) |
-| `is_weekend` | Binary flag for weekends |
+Returns service status and whether the ML engine loaded successfully.
 
 ---
 
-## 🗄️ Database Schema
+## ML models
 
-The core `transactions` table is **range-partitioned by month** for performance at scale:
+**Isolation Forest** — unsupervised anomaly detection. Trained on unlabeled transaction data; flags the top ~1% of anomalous patterns based on amount, geo_velocity, tx_count_10m, hour_of_day, and weekend_flag.
+
+**XGBoost classifier** — supervised binary classifier trained on labeled fraud data (Kaggle Credit Card Fraud Detection dataset). SMOTE was applied during training to handle the severe class imbalance (~0.17% fraud rate). SHAP is used for per-prediction feature attribution.
+
+The two models run in sequence: Isolation Forest output feeds into XGBoost as an additional feature. FraudService delegates all CPU-bound inference to FraudPredictor via `run_in_executor` so the async event loop never blocks.
+
+**Engineered features pulled from Redis:**
+
+| Feature             | Description                                                  |
+|---------------------|--------------------------------------------------------------|
+| `geo_velocity`      | Haversine distance (km) from last transaction location       |
+| `time_since_last_tx`| Seconds elapsed since the account's last transaction         |
+| `tx_count_10m`      | Number of transactions from this account in the last 10 min  |
+| `amount_z_score`    | Amount normalized against the account's historical mean/std  |
+| `hour_of_day`       | Hour of submission (0–23)                                    |
+| `is_weekend`        | Binary flag                                                  |
+
+**Model performance:**
+
+| Metric            | XGBoost |
+|-------------------|---------|
+| ROC-AUC           | 0.974   |
+| Fraud recall      | 0.91    |
+| Precision         | 0.87    |
+| False positive rate | ~2%   |
+
+---
+
+## Database schema
+
+The `transactions` table is range-partitioned by month. A new partition is auto-created at startup if the next month's partition doesn't exist yet.
 
 ```sql
 CREATE TABLE transactions (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    account_id    VARCHAR(20) NOT NULL,
-    amount        NUMERIC(12, 2) NOT NULL,
-    status        VARCHAR(30) DEFAULT 'Pending',
-    is_fraudulent BOOLEAN DEFAULT FALSE,
+    account_id    VARCHAR(20)   NOT NULL,
+    amount        NUMERIC(12,2) NOT NULL,
+    status        VARCHAR(30)   DEFAULT 'Pending',
+    is_fraudulent BOOLEAN       DEFAULT FALSE,
     risk_score    FLOAT,
     latitude      FLOAT,
     longitude     FLOAT,
-    created_at    TIMESTAMPTZ DEFAULT NOW()
+    created_at    TIMESTAMPTZ   DEFAULT NOW()
 ) PARTITION BY RANGE (created_at);
 ```
 
-A **PostgreSQL trigger** enforces hard business rules before every insert — no application-level bypass possible.
+A trigger on every insert evaluates hard business rules — suspended account status, per-day spend limits — before the row is committed. These rules cannot be skipped at the application level.
 
 ---
 
-## 📊 Model Performance
+## Rate limiting
 
-| Metric | Isolation Forest | XGBoost |
-|---|---|---|
-| ROC-AUC | — | **0.974** |
-| Fraud Recall | — | **0.91** |
-| Precision | — | 0.87 |
-| False Positive Rate | ~1% | ~2% |
+The `/transaction/submit` endpoint is limited to **10 requests per minute per IP** via slowapi. Exceeding the limit returns `HTTP 429`. The limit is enforced in the backend and applies regardless of whether the request comes through the dashboard or directly via the API.
 
 ---
 
-## 🧪 Running Tests
+## Configuration
+
+Copy `.env.example` to `.env`. The defaults are set for local development and will work without changes:
+
+| Variable          | Default                          | Notes                                      |
+|-------------------|----------------------------------|--------------------------------------------|
+| `POSTGRES_DB`     | `frauddb`                        |                                            |
+| `POSTGRES_USER`   | `frauduser`                      |                                            |
+| `POSTGRES_PASSWORD` | `fraudpass`                    | Change before deploying                    |
+| `REDIS_URL`       | `redis://localhost:6379/0`       |                                            |
+| `SECRET_KEY`      | `change-this-...`                | Generate with `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `ALLOWED_ORIGINS` | `http://localhost:8501`          | Comma-separated for multiple origins       |
+| `ENV`             | `development`                    |                                            |
+
+---
+
+## Running tests
 
 ```bash
 cd backend
-pytest tests/ -v
+pip install -r requirements.txt
+pytest tests/ -v --cov=app --cov-report=term-missing
 ```
 
----
+Tests use `fakeredis` and an in-memory SQLite database — no running services needed.
 
-## 🤝 Contributing
-
-1. Fork the repo
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes: `git commit -m 'Add your feature'`
-4. Push and open a Pull Request
+The CI pipeline (`.github/workflows/ci.yml`) runs the full test suite on every push to `main` or `develop`, and on all pull requests against `main`.
 
 ---
 
-## 📄 License
+## Training the ML models locally
 
-MIT License — see [LICENSE](LICENSE) for details.
+Pre-trained `.pkl` artifacts are included in `backend/app/ml/models/`. To retrain on new data:
+
+```bash
+cd backend
+pip install -r requirements.txt
+python app/ml/train.py
+```
+
+The notebooks in `ml_pipeline/notebooks/` walk through EDA, feature engineering, and the full training run step by step.
 
 ---
 
-## 🙏 Acknowledgements
+## License
 
-- [Kaggle Credit Card Fraud Detection Dataset](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) — ULB Machine Learning Group
-- Architecture inspired by production patterns at major fintech institutions
+MIT — see [LICENSE](LICENSE).
+
+---
+
+## Dataset credit
+
+[Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) — ULB Machine Learning Group, via Kaggle.
