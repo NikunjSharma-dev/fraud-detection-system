@@ -44,10 +44,9 @@ services:
       REDIS_URL:       redis://redis:6379/0
       SECRET_KEY:      ${SECRET_KEY:-changeme-in-production}
       ENV:             ${ENV:-development}
-      # FIX: ALLOWED_ORIGINS must include the Streamlit service URL.
-      # Without this the CORS middleware (which replaced allow_origins=["*"])
-      # blocks every request from the Streamlit frontend.
-      ALLOWED_ORIGINS: "http://streamlit:8501,http://localhost:8501"
+      # Must include the Streamlit service URL so the CORS middleware
+      # allows requests from the frontend container.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://streamlit:8501,http://localhost:8501}
     ports:
       - "8000:8000"
     depends_on:

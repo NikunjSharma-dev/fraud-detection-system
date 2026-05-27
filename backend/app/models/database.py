@@ -1,9 +1,4 @@
-"""
-Async PostgreSQL setup — SQLAlchemy 2.0 + asyncpg.
-
-Upgrades:
-  - create_next_month_partition() added — called at startup to auto-provision partitions
-"""
+"""Async PostgreSQL setup — SQLAlchemy 2.0 + asyncpg."""
 import os
 import uuid
 from datetime import datetime
@@ -15,10 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func, text
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://frauduser:fraudpass@localhost:5432/frauddb",
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is not set. "
+        "Copy .env.example to .env and set it before starting the server."
+    )
 
 engine = create_async_engine(
     DATABASE_URL,
@@ -88,7 +85,7 @@ async def init_db():
     """Verify DB connectivity at startup."""
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
-    print("✅ PostgreSQL connection established.")
+    print("PostgreSQL connection established.")
 
 
 async def create_next_month_partition():

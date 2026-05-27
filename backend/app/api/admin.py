@@ -1,14 +1,4 @@
-"""
-Admin Dashboard API — Ledger stats, transaction history, volume trends, account management.
-
-Fixes vs. previous version:
-  - Added missing `from pydantic import BaseModel` (app was crashing on startup)
-  - Added missing `HTTPException` import (crash when 404 path was hit)
-  - Fixed `transactions=` field: was passing get_ledger_summary() dict instead of
-    get_recent_transactions() list — LedgerSummaryResponse.transactions is List[dict]
-  - SQL injection in account search delegated to LedgerService (uses :param binding)
-  - AccountStatusUpdate moved to top of file (was referencing BaseModel before import)
-"""
+"""Admin API — ledger stats, transaction history, volume trends, account management."""
 import logging
 from typing import List
 
@@ -38,7 +28,7 @@ class AccountStatusUpdate(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 @router.get("/ledger-summary", response_model=LedgerSummaryResponse)
 async def get_ledger_summary(db: AsyncSession = Depends(get_db)):
-    """Real-time aggregated ledger stats — used by the Live Dashboard page."""
+    """Aggregated ledger stats used by the dashboard."""
     query = text("""
         SELECT
             SUM(total_volume)        AS total_volume,
@@ -60,7 +50,7 @@ async def get_ledger_summary(db: AsyncSession = Depends(get_db)):
     # Real TPS from LedgerService
     summary = await LedgerService.get_ledger_summary(db)
 
-    # FIX: transactions must be a list — use get_recent_transactions, not get_ledger_summary
+
     recent_txns = await LedgerService.get_recent_transactions(db, limit=20)
 
     return LedgerSummaryResponse(

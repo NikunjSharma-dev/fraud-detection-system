@@ -1,16 +1,4 @@
-"""
-Transactions API — Submit, ML-score, and OTP-verify credit card transactions.
-
-Upgrades:
-  - evaluate_transaction now fully async (awaited directly)
-  - lat/lon forwarded to FraudService for real geo-velocity calculation
-  - Redis-backed OTP generation on MFA trigger (no more hardcoded "123456")
-  - Real OTP verification via FraudService.verify_otp()
-  - verify endpoint uses PATCH (correct REST semantics)
-  - Rate-limited to 10 submissions/minute per IP via slowapi
-  - LedgerService used for DB operations (no inline duplication)
-  - SHAP explanation returned in response
-"""
+"""Transactions API — submit, ML-score, and OTP-verify transactions."""
 import uuid
 import logging
 
@@ -47,7 +35,7 @@ async def submit_transaction(
     payload: TransactionSubmitRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Submit a new transaction for real-time fraud evaluation."""
+    """Submit a transaction for fraud evaluation."""
     try:
         # ── Anti-brute-force: recover any existing pending MFA challenge ──────
         pending_query = select(TransactionORM).where(
@@ -95,7 +83,7 @@ async def submit_transaction(
             print(f"🚨 YOUR DEMO OTP IS: {generated_otp}")
             print(f"{'='*50}\n")
             
-            logger.info(f"📱 OTP for {new_tx.id}: {generated_otp}  (demo only)")
+            logger.info(f"OTP for {new_tx.id}: {generated_otp}  (demo only)")
             otp_hint = f"[DEMO] Your OTP: {generated_otp}"
 
         # ── Step 4: Persist ML decision ───────────────────────────────────────
@@ -211,7 +199,7 @@ async def resend_otp(transaction_id: str, db: AsyncSession = Depends(get_db)):
         print(f"🔄 NEW DEMO OTP IS: {generated_otp}")
         print(f"{'='*50}\n")
         
-        logger.info(f"📱 Resent OTP for {tx.id}: {generated_otp}  (demo only)")
+        logger.info(f"Resent OTP for {tx.id}: {generated_otp}  (demo only)")
 
         return {"status": "Success", "message": "New OTP generated successfully."}
 

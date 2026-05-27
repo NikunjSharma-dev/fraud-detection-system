@@ -1,10 +1,4 @@
-"""
-Pydantic request/response schemas for the FraudGuard AI API.
-
-Upgrades:
-  - TransactionResponse now includes optional 'explanation' (SHAP attributions)
-  - VolumeTrendPoint schema added for /admin/volume-trend
-"""
+"""Pydantic request/response schemas."""
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from uuid import UUID
@@ -17,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TransactionSubmitRequest(BaseModel):
-    """Payload for submitting a new transaction for real-time fraud evaluation."""
+    """Payload for submitting a new transaction."""
     account_id: str   = Field(..., description="Unique account identifier")
     amount:     float = Field(..., gt=0, description="Transaction amount in INR")
     lat:        float = Field(..., ge=-90, le=90,     description="Merchant latitude")

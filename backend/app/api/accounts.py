@@ -1,7 +1,4 @@
-"""
-Accounts API — Customer Onboarding and Account Generation.
-Cleaned: Database logic delegated to LedgerService.
-"""
+"""Customer onboarding and account provisioning."""
 import random
 import logging
 from fastapi import APIRouter, HTTPException, Depends

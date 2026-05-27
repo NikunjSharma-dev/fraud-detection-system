@@ -11,13 +11,13 @@ import time
 # Configuration & Theming
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="FraudGuard AI Control Center",
+    page_title="FraudGuard",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Enterprise Look
+# Custom CSS
 st.markdown("""
     <style>
     .metric-card {
@@ -35,22 +35,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # API Configuration
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+API_URL = os.getenv("API_URL", "http://localhost:8000")  # set API_URL in .env for non-local deployments
 
 # -----------------------------------------------------------------------------
 # Sidebar Navigation
 # -----------------------------------------------------------------------------
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/6212/6212586.png", width=60)
-    st.title("FraudGuard AI")
-    st.markdown("Enterprise Fraud Detection")
+    st.title("FraudGuard")
+    st.markdown("Fraud Detection")
     st.divider()
     page = st.radio("Navigation", [
         "📊 Live Dashboard", 
         "📝 Open Account",
         "💳 Simulate Transaction", 
         "🛠️ Technical Ops", 
-        "🧠 Model Performance",
+        "📊 Model Performance",
         "🔐 Admin Portal",
         "⚙️ System Health"
     ])
@@ -61,14 +61,14 @@ with st.sidebar:
 # PAGE 1: LIVE DASHBOARD
 # =============================================================================
 if page == "📊 Live Dashboard":
-    st.header("Real-Time Ledger Intelligence")
+    st.header("Live Ledger")
     
     try:
         response = requests.get(f"{API_URL}/admin/ledger-summary", timeout=2)
         if response.status_code != 200: raise ValueError
         data = response.json()
     except:
-        st.warning("⚠️ API offline or endpoints building. Showing mock data.", icon="🚧")
+        st.warning("API offline — showing mock data.", icon="⚠️")
         data = {"total_volume": 0.0, "fraud_count": 0, "throughput": 0.0, "status_breakdown": {"Approved": 0, "Declined": 0, "Awaiting Verification": 0}}
 
     col1, col2, col3, col4 = st.columns(4)
@@ -117,7 +117,7 @@ if page == "📊 Live Dashboard":
                     if not df_fraud.empty:
                         st.dataframe(df_fraud[display_cols].style.highlight_max(subset=['risk_score'], color='#FF4B4B'), use_container_width=True)
                     else:
-                        st.info("✅ No fraudulent transactions detected in the recent ledger.")
+                        st.info("No fraudulent transactions in the recent ledger.")
     except Exception: pass
 
 # =============================================================================
@@ -141,7 +141,7 @@ elif page == "📝 Open Account":
             kyc = st.selectbox("Identity Verification Document", ["Aadhaar Card", "PAN Card", "Passport", "Driver's License"])
 
         st.markdown("<br>", unsafe_allow_html=True)
-        submit_signup = st.form_submit_button("Provision New Account ✅", use_container_width=True)
+        submit_signup = st.form_submit_button("Create Account", use_container_width=True)
 
     if submit_signup:
         if not full_name or not email or not phone:
@@ -174,7 +174,7 @@ elif page == "📝 Open Account":
 # =============================================================================
 elif page == "💳 Simulate Transaction":
     st.header("Point of Sale Emulator")
-    st.markdown("Inject real-time transactions into the ML pipeline to observe AI and Database Trigger responses.")
+    st.markdown("Submit transactions and watch the ML pipeline and database triggers respond in real time.")
     
     if "pending_mfa_tx" not in st.session_state: st.session_state.pending_mfa_tx = None
 
@@ -192,14 +192,14 @@ elif page == "💳 Simulate Transaction":
                 lon = col_lon.number_input("Longitude", value=72.8777, format="%.4f")
                 submitted = st.form_submit_button("Swipe Card 💳", use_container_width=True)
         else:
-            st.warning("⚠️ Account temporarily locked pending verification.", icon="🔒")
+            st.warning("Account locked — complete the pending MFA challenge.", icon="🔒")
             with st.form("otp_form", clear_on_submit=True):
                 st.subheader("Step-Up Authentication Required")
                 st.markdown(f"Transaction ID: `{st.session_state.pending_mfa_tx}`")
                 otp_input = st.text_input("Enter 6-Digit OTP (Check Backend Terminal)", max_chars=6)
                 
                 c1, c2, c3 = st.columns(3)
-                submit_otp = c1.form_submit_button("Verify ✅", use_container_width=True)
+                submit_otp = c1.form_submit_button("Verify", use_container_width=True)
                 resend_btn = c2.form_submit_button("Resend 🔄", use_container_width=True)
                 cancel_btn = c3.form_submit_button("Cancel ❌", use_container_width=True)
 
@@ -210,7 +210,7 @@ elif page == "💳 Simulate Transaction":
         if not st.session_state.pending_mfa_tx and submitted:
             payload = {"account_id": account_id, "amount": amount, "lat": lat, "lon": lon}
             with tc:
-                st.info("📡 Sending payload to Risk Engine...")
+                st.info("Sending transaction to risk engine...")
                 try:
                     res = requests.post(f"{API_URL}/transaction/submit", json=payload, timeout=5)
                     data = res.json()
@@ -218,17 +218,17 @@ elif page == "💳 Simulate Transaction":
                     if res.status_code == 200:
                         status = data.get("status")
                         if status == "Approved":
-                            st.success(f"✅ Transaction Approved\n\n**Risk:** {data.get('risk_score', 0):.4f}", icon="✅")
+                            st.success(f"Transaction approved — risk score: {data.get('risk_score', 0):.4f}")
                             st.balloons()
                         elif status == "Declined":
                             st.error(f"🚨 BLOCKED\n\n**Reason:** {data.get('message')}", icon="⛔")
                         elif status == "Awaiting Verification":
-                            st.warning(f"⚠️ HIGH RISK (Score: {(data.get('risk_score') or 0):.4f})\n\n**Action:** Step-up MFA Required.", icon="🛡️")
+                            st.warning(f"High risk — score: {(data.get('risk_score') or 0):.4f}. MFA required.")
                             st.session_state.pending_mfa_tx = data.get("transaction_id")
                         
                         if data.get("explanation"):
                             st.markdown("---")
-                            st.subheader("🧠 SHAP AI Explanation")
+                            st.subheader("SHAP Feature Attribution")
                             exp = data["explanation"]
                             top_factors = sorted(exp.items(), key=lambda x: abs(x[1]), reverse=True)[:3]
                             for feature, impact in top_factors:
@@ -241,13 +241,13 @@ elif page == "💳 Simulate Transaction":
         elif st.session_state.pending_mfa_tx:
             if submit_otp:
                 with tc:
-                    st.info("🔐 Validating cryptographic token...")
+                    st.info("Validating OTP...")
                     time.sleep(0.5)
                     try:
                         res = requests.patch(f"{API_URL}/transaction/{st.session_state.pending_mfa_tx}/verify", json={"otp": otp_input})
                         data = res.json()
                         if data.get("status") == "Verified":
-                            st.success("✅ Identity Confirmed! Transaction processed.", icon="✅")
+                            st.success("Identity confirmed. Transaction approved.")
                             st.balloons()
                         else: st.error(f"❌ {data.get('message')}", icon="❌")
                         st.session_state.pending_mfa_tx = None
@@ -257,7 +257,7 @@ elif page == "💳 Simulate Transaction":
             
             if resend_btn:
                 with tc:
-                    st.info("🔄 Requesting new OTP token...")
+                    st.info("Requesting a new OTP...")
                     try:
                         res = requests.post(f"{API_URL}/transaction/{st.session_state.pending_mfa_tx}/resend-otp")
                         if res.status_code == 200: st.success("📩 New OTP Generated! Check terminal.", icon="📩")
@@ -272,8 +272,8 @@ elif page == "💳 Simulate Transaction":
 # PAGE 4: TECHNICAL OPERATIONS
 # =============================================================================
 elif page == "🛠️ Technical Ops":
-    st.header("Pipeline Health & ML Monitoring")
-    st.markdown("Real-time telemetry for the event stream and ML inference engine.")
+    st.header("Pipeline Health")
+    st.markdown("Telemetry for the event stream and ML inference engine.")
     
     times = pd.date_range(start="17:30", end="18:16", freq="1min")
     n_points = len(times)
@@ -376,9 +376,9 @@ elif page == "🛠️ Technical Ops":
 # =============================================================================
 # PAGE 5: MODEL PERFORMANCE
 # =============================================================================
-elif page == "🧠 Model Performance":
-    st.header("Machine Learning Evaluation Metrics")
-    st.markdown("Retrospective analysis of the XGBoost + Isolation Forest ensemble on the validation dataset.")
+elif page == "📊 Model Performance":
+    st.header("Model Evaluation Metrics")
+    st.markdown("Validation results for the XGBoost + Isolation Forest ensemble.")
 
     col1, col2, col3 = st.columns(3)
     with col1: st.markdown('<div class="metric-card"><div class="metric-label">Global Accuracy</div><div class="metric-value">99.2%</div></div>', unsafe_allow_html=True)
@@ -462,7 +462,7 @@ elif page == "🔐 Admin Portal":
         
     # If NOT logged in, show the password screen
     if not st.session_state.admin_auth:
-        st.warning("⚠️ Authorized Personnel Only. All access attempts are logged.")
+        st.warning("Authorized personnel only. All access attempts are logged.")
         
         with st.form("admin_login"):
             pwd = st.text_input("Enter Admin Password", type="password", placeholder="Hint: admin123")
@@ -540,7 +540,7 @@ elif page == "🔐 Admin Portal":
                                 json={"status": new_status}
                             )
                             if update_res.status_code == 200:
-                                st.success(f"✅ {target_acc} is now {new_status}!")
+                                st.success(f"{target_acc} status updated to {new_status}.")
                                 time.sleep(1)
                                 st.rerun()
                             else:
@@ -559,12 +559,12 @@ elif page == "⚙️ System Health":
     
     db_status = st.progress(0, text="Pinging PostgreSQL (Ledger)...")
     time.sleep(0.3)
-    db_status.progress(100, text="✅ PostgreSQL (Ledger): Online & Partitioning Active")
+    db_status.progress(100, text="PostgreSQL: online")
     
     redis_status = st.progress(0, text="Pinging Redis (Feature Cache)...")
     time.sleep(0.3)
-    redis_status.progress(100, text="✅ Redis (Feature Cache): Sub-millisecond latency")
+    redis_status.progress(100, text="Redis: online")
     
     ml_status = st.progress(0, text="Loading Scikit/XGBoost Models...")
     time.sleep(0.3)
-    ml_status.progress(100, text="✅ ML Engine: Models loaded into memory")
+    ml_status.progress(100, text="ML engine: models loaded")

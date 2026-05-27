@@ -36,7 +36,7 @@ def load_data() -> pd.DataFrame:
         df = pd.read_csv(DATA_PATH)
         return df
 
-    print("⚠️  Dataset not found. Generating synthetic data for demonstration...")
+    print("Dataset not found. Generating synthetic data...")
     np.random.seed(42)
     n = 10000
     fraud_ratio = 0.017
@@ -190,7 +190,7 @@ def main():
     joblib.dump(scaler,           MODELS_DIR / "scaler.pkl")
     joblib.dump(FEATURE_COLUMNS,  MODELS_DIR / "feature_columns.pkl")
 
-    print(f"\n✅ Models saved to {MODELS_DIR}")
+    print(f"Models saved to {MODELS_DIR}")
     print("   • isolation_forest.pkl")
     print("   • xgboost_classifier.pkl")
     print("   • scaler.pkl")

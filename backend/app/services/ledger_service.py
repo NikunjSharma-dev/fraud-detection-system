@@ -1,12 +1,4 @@
-"""
-LedgerService — All PostgreSQL read/write operations for transactions and accounts.
-
-Fixes vs. previous version:
-  - get_ledger_summary was defined TWICE (duplicate method); second silently
-    overwrote the first. Merged into a single, definitive implementation.
-  - create_account / get_all_accounts / update_account_status kept (used by accounts API)
-  - get_volume_trend + get_recent_transactions added (used by admin dashboard)
-"""
+"""LedgerService — all PostgreSQL read/write operations for transactions and accounts."""
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,8 +58,8 @@ class LedgerService:
     @staticmethod
     async def get_ledger_summary(db: AsyncSession) -> dict:
         """
-        Returns real-time aggregate stats: total volume, fraud count,
-        real TPS, and status breakdown — used by /admin/ledger-summary.
+        Returns aggregate stats: total volume, fraud count,
+        throughput, and status breakdown. Used by /admin/ledger-summary.
         """
         row = (await db.execute(text("""
             SELECT

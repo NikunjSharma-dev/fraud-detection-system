@@ -1,5 +1,5 @@
 """
-ML Prediction Module — Real-time fraud risk scoring.
+ML Prediction Module — fraud risk scoring.
 
 This is the canonical ML inference class. FraudService (the async orchestrator)
 delegates all CPU-bound work here, so predict.py is no longer dead code.

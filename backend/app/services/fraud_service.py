@@ -1,29 +1,12 @@
 """
-FraudService — Async orchestrator for ML inference, Redis feature store, and OTP.
+FraudService — async orchestrator for ML inference, Redis feature store, and OTP.
 
-Architecture:
-  ┌─────────────────────────────────────────────────────┐
-  │  FraudService (this file)                           │
-  │  • Async Redis reads/writes (behavioral context)    │
-  │  • Geo-velocity & amount z-score computation        │
-  │  • Delegates ML work to FraudPredictor (predict.py) │
-  │  • OTP generation + single-use Redis verification   │
-  └──────────────────────┬──────────────────────────────┘
-                         │ calls (via run_in_executor)
-  ┌──────────────────────▼──────────────────────────────┐
-  │  FraudPredictor (app/ml/predict.py)                 │
-  │  • StandardScaler → IsolationForest → XGBoost       │
-  │  • SHAP attributions                                │
-  │  • Returns FraudPrediction dataclass                │
-  └─────────────────────────────────────────────────────┘
+FraudService owns all async I/O (Redis reads/writes, geo-velocity, OTP).
+CPU-bound inference is delegated to FraudPredictor via run_in_executor.
 
-Fixes applied vs. previous version:
-  - Removed duplicate _build_features method (was defined twice; Python
-    silently kept only the last one, creating a maintenance hazard)
-  - _run_inference now delegates to FraudPredictor.predict() so predict.py
-    is no longer dead code (#4 from upgrade list)
-  - load_models() calls FraudPredictor.load() — single source of truth,
-    no duplicate model files in memory
+  FraudService  →  FraudPredictor.predict()
+                     StandardScaler → IsolationForest → XGBoost → SHAP
+                     returns FraudPrediction dataclass
 """
 import os
 import asyncio
@@ -50,8 +33,14 @@ def get_redis() -> aioredis.Redis:
     """Return (or create) the module-level async Redis client."""
     global _redis_client
     if _redis_client is None:
+        redis_url = os.getenv("REDIS_URL")
+        if not redis_url:
+            raise RuntimeError(
+                "REDIS_URL environment variable is not set. "
+                "Set it in your .env file before starting the server."
+            )
         _redis_client = aioredis.from_url(
-            os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+            redis_url,
             encoding="utf-8",
             decode_responses=True,
         )
@@ -92,7 +81,7 @@ class FraudService:
             return
         FraudPredictor.load()
         cls._models_loaded = FraudPredictor.is_loaded()
-        logger.info("✅ ML Models + SHAP explainer ready (via FraudPredictor).")
+        logger.info("ML models loaded.")
 
     # ── Redis: Behavioral Context ─────────────────────────────────────────────
 
@@ -264,7 +253,7 @@ class FraudService:
     @classmethod
     async def generate_otp(cls, transaction_id: str) -> str:
         """
-        Generate a cryptographically secure 6-digit OTP.
+        Generate a 6-digit OTP using secrets.
         Stored in Redis with a 5-minute TTL.
         In production: deliver via Twilio SMS.
         """
