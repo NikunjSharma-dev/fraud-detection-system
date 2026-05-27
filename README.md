@@ -33,7 +33,7 @@ A Streamlit dashboard polls `/admin/ledger-summary` for live metrics, charts, an
                           (write)                                    (async eval)
                                ▼                                            ▼
                     ┌─────────────────────┐                  ┌─────────────────────────┐
-                    │     PostgreSQL       │                  │       ML Engine         │
+                    │    PostgreSQL       │                  │       ML Engine         │
                     │  (transactional     │                  │  IsolationForest + XGB  │
                     │   ledger)           │                  │                         │
                     │                     │                  │  reads Redis context    │
